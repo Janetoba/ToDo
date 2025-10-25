@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-export default function NotFound() {
+export default function NotFound(): JSX.Element {
   return (
     <div
       style={{
@@ -19,7 +19,7 @@ export default function NotFound() {
     >
       <h1 style={{ fontSize: "4rem", color: "#A888B5" }}>404</h1>
       <p style={{ fontSize: "1.2rem" }}>
-        The page you’re looking for doesn’t exist.
+        The page you're looking for doesn't exist.
       </p>
       <Link
         href="/"

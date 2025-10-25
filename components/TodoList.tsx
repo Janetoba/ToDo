@@ -1,35 +1,75 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { 
+  collection, 
+  addDoc, 
+  getDocs, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  query, 
+  orderBy, 
+  Timestamp 
+} from 'firebase/firestore';
+import { db } from './firebase';
 
-const fetchTodos = async () => {
-  const res = await fetch("https://jsonplaceholder.typicode.com/todos");
-  if (!res.ok) throw new Error("Failed to fetch todos");
-  return res.json();
-};
+interface Todo {
+  id: string;
+  title: string;
+  completed: boolean;
+  createdAt: Date;
+  userId?: number;
+}
 
-export default function TodoList() {
-  const [showModal, setShowModal] = useState(false);
-  const [modalInput, setModalInput] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [darkMode, setDarkMode] = useState(false);
-  const [localTodos, setLocalTodos] = useState([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [searchTerm, setSearchTerm] = useState("");
+type StatusFilter = "all" | "completed" | "not-completed";
+
+export default function TodoList(): JSX.Element {
+  const [showModal, setShowModal] = useState<boolean>(false);
+  const [modalInput, setModalInput] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [darkMode, setDarkMode] = useState<boolean>(false);
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string>("");
   const router = useRouter();
-  const todosPerPage = 10;
+  const todosPerPage: number = 10;
 
-  const { data: todos = [], isLoading, isError } = useQuery({
-    queryKey: ["todos"],
-    queryFn: fetchTodos,
-  });
+  // Load todos from Firebase on mount
+  useEffect(() => {
+    loadTodos();
+  }, []);
 
-  const allTodos = [...localTodos, ...todos];
+  const loadTodos = async (): Promise<void> => {
+    setIsLoading(true);
+    setError("");
+    try {
+      const q = query(collection(db, 'todos'), orderBy('createdAt', 'desc'));
+      const querySnapshot = await getDocs(q);
+      const todosData = querySnapshot.docs.map(docSnapshot => {
+        const data = docSnapshot.data();
+        return {
+          id: docSnapshot.id,
+          title: data.title,
+          completed: data.completed,
+          createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
+          userId: data.userId
+        } as Todo;
+      });
+      setTodos(todosData);
+    } catch (err) {
+      setError('Failed to load todos. Make sure Firebase is configured correctly.');
+      console.error('Error loading todos:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  const filteredTodos = allTodos.filter((todo) => {
+  const filteredTodos: Todo[] = todos.filter((todo) => {
     const matchesSearch = todo.title
       .toLowerCase()
       .includes(searchTerm.toLowerCase());
@@ -48,48 +88,77 @@ export default function TodoList() {
     }
   }, [isLoading, searchTerm, filteredTodos.length, router]);
 
-  const indexOfLastTodo = currentPage * todosPerPage;
-  const indexOfFirstTodo = indexOfLastTodo - todosPerPage;
-  const currentTodos = filteredTodos.slice(indexOfFirstTodo, indexOfLastTodo);
-  const totalPages = Math.ceil(filteredTodos.length / todosPerPage);
+  const indexOfLastTodo: number = currentPage * todosPerPage;
+  const indexOfFirstTodo: number = indexOfLastTodo - todosPerPage;
+  const currentTodos: Todo[] = filteredTodos.slice(indexOfFirstTodo, indexOfLastTodo);
+  const totalPages: number = Math.ceil(filteredTodos.length / todosPerPage);
 
-  const handleAddTodo = () => {
+  const handleAddTodo = async (): Promise<void> => {
     if (!modalInput.trim()) return;
-    const newTodo = {
-      id: Math.random(),
-      title: modalInput,
-      completed: false,
-    };
-    setLocalTodos((prev) => [newTodo, ...prev]);
-    setModalInput("");
-    setShowModal(false);
-  };
-
-  const handleToggleCompleted = (id) => {
-    setLocalTodos((prev) =>
-      prev.map((todo) =>
-        todo.id === id ? { ...todo, completed: !todo.completed } : todo
-      )
-    );
-  };
-
-  const handleDelete = (id) => {
-    setLocalTodos((prev) => prev.filter((todo) => todo.id !== id));
-  };
-
-  const handleEdit = (id) => {
-    const title = prompt("Edit todo title:");
-    if (title && title.trim()) {
-      setLocalTodos((prev) =>
-        prev.map((todo) =>
-          todo.id === id ? { ...todo, title: title.trim() } : todo
-        )
-      );
+    
+    setError("");
+    try {
+      await addDoc(collection(db, 'todos'), {
+        title: modalInput,
+        completed: false,
+        createdAt: Timestamp.now()
+      });
+      setModalInput("");
+      setShowModal(false);
+      await loadTodos();
+    } catch (err) {
+      setError('Failed to add todo');
+      console.error('Error adding todo:', err);
     }
   };
 
-  if (isLoading) return <p>Loading...</p>;
-  if (isError) return <p>Something went wrong while loading todos.</p>;
+  const handleToggleCompleted = async (id: string): Promise<void> => {
+    setError("");
+    try {
+      const todo = todos.find(t => t.id === id);
+      if (todo) {
+        const todoRef = doc(db, 'todos', id);
+        await updateDoc(todoRef, {
+          completed: !todo.completed
+        });
+        await loadTodos();
+      }
+    } catch (err) {
+      setError('Failed to update todo');
+      console.error('Error updating todo:', err);
+    }
+  };
+
+  const handleDelete = async (id: string): Promise<void> => {
+    setError("");
+    try {
+      await deleteDoc(doc(db, 'todos', id));
+      await loadTodos();
+    } catch (err) {
+      setError('Failed to delete todo');
+      console.error('Error deleting todo:', err);
+    }
+  };
+
+  const handleEdit = async (id: string): Promise<void> => {
+    const title = prompt("Edit todo title:");
+    if (title && title.trim()) {
+      setError("");
+      try {
+        const todoRef = doc(db, 'todos', id);
+        await updateDoc(todoRef, {
+          title: title.trim()
+        });
+        await loadTodos();
+      } catch (err) {
+        setError('Failed to edit todo');
+        console.error('Error editing todo:', err);
+      }
+    }
+  };
+
+  if (isLoading) return <p style={{ textAlign: 'center', padding: '2rem' }}>Loading...</p>;
+  if (error && todos.length === 0) return <p style={{ textAlign: 'center', padding: '2rem', color: 'red' }}>{error}</p>;
 
   return (
     <div
@@ -115,6 +184,22 @@ export default function TodoList() {
         CheckMate
       </h2>
 
+      {/* Error Banner */}
+      {error && (
+        <div
+          style={{
+            backgroundColor: "#fee",
+            color: "#c00",
+            padding: "0.75rem",
+            borderRadius: "6px",
+            marginBottom: "1rem",
+            border: "1px solid #fcc",
+          }}
+        >
+          {error}
+        </div>
+      )}
+
       <button
         onClick={() => setDarkMode((prev) => !prev)}
         style={{
@@ -133,7 +218,7 @@ export default function TodoList() {
       <select
         value={statusFilter}
         onChange={(e) => {
-          setStatusFilter(e.target.value);
+          setStatusFilter(e.target.value as StatusFilter);
           setCurrentPage(1);
         }}
         style={{
@@ -210,11 +295,12 @@ export default function TodoList() {
               boxShadow: "0 2px 10px rgba(0,0,0,0.2)",
             }}
           >
-            <h3 style={{ marginBottom: "1rem" }}>Add a New Todo</h3>
+            <h3 style={{ marginBottom: "1rem", color: "#000" }}>Add a New Todo</h3>
             <input
               type="text"
               value={modalInput}
               onChange={(e) => setModalInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleAddTodo()}
               placeholder="Enter todo title"
               style={{
                 width: "100%",
@@ -366,68 +452,79 @@ export default function TodoList() {
         ))}
       </ul>
 
+      {/* Empty State */}
+      {currentTodos.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '3rem', color: darkMode ? '#aaa' : '#666' }}>
+          <p style={{ fontSize: '1.2rem' }}>No todos found. Add your first one!</p>
+        </div>
+      )}
+
       {/* Pagination */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          gap: "0.5rem",
-          marginTop: "2rem",
-          flexWrap: "wrap",
-        }}
-      >
-        <button
-          onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-          disabled={currentPage === 1}
+      {totalPages > 1 && (
+        <div
           style={{
-            padding: "0.5rem 0.8rem",
-            borderRadius: "6px",
-            backgroundColor: "#EFB6C8",
-            border: "none",
-            cursor: "pointer",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: "0.5rem",
+            marginTop: "2rem",
+            flexWrap: "wrap",
           }}
         >
-          Previous
-        </button>
+          <button
+            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+            style={{
+              padding: "0.5rem 0.8rem",
+              borderRadius: "6px",
+              backgroundColor: "#EFB6C8",
+              border: "none",
+              cursor: currentPage === 1 ? "not-allowed" : "pointer",
+              opacity: currentPage === 1 ? 0.5 : 1,
+            }}
+          >
+            Previous
+          </button>
 
-        {Array.from({ length: totalPages }, (_, i) => i + 1)
-          .filter((page) => Math.abs(page - currentPage) <= 2)
-          .map((page) => (
-            <button
-              key={page}
-              onClick={() => setCurrentPage(page)}
-              style={{
-                padding: "0.5rem 0.8rem",
-                borderRadius: "6px",
-                backgroundColor:
-                  page === currentPage ? "#007bff" : "#f0f0f0",
-                color: page === currentPage ? "#fff" : "#000",
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              {page}
-            </button>
-          ))}
+          {Array.from({ length: totalPages }, (_, i) => i + 1)
+            .filter((page) => Math.abs(page - currentPage) <= 2)
+            .map((page) => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                style={{
+                  padding: "0.5rem 0.8rem",
+                  borderRadius: "6px",
+                  backgroundColor:
+                    page === currentPage ? "#007bff" : "#f0f0f0",
+                  color: page === currentPage ? "#fff" : "#000",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                {page}
+              </button>
+            ))}
 
-        <button
-          onClick={() =>
-            setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-          }
-          disabled={currentPage === totalPages}
-          style={{
-            padding: "0.5rem 0.8rem",
-            borderRadius: "6px",
-            backgroundColor: "#EFB6C8",
-            border: "none",
-            cursor: "pointer",
-            marginLeft: "10px",
-          }}
-        >
-          Next
-        </button>
-      </div>
+          <button
+            onClick={() =>
+              setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+            }
+            disabled={currentPage === totalPages}
+            style={{
+              padding: "0.5rem 0.8rem",
+              borderRadius: "6px",
+              backgroundColor: "#EFB6C8",
+              border: "none",
+              cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+              opacity: currentPage === totalPages ? 0.5 : 1,
+              marginLeft: "10px",
+            }}
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 }
