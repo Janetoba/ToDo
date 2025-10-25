@@ -11,10 +11,6 @@ interface Todo {
   userId: number;
 }
 
-interface RouteParams {
-  id: string;
-}
-
 const fetchTodo = async (id: string): Promise<Todo> => {
   const res = await fetch(`https://jsonplaceholder.typicode.com/todos/${id}`);
   if (!res.ok) throw new Error("Todo not found");
@@ -22,15 +18,17 @@ const fetchTodo = async (id: string): Promise<Todo> => {
 };
 
 export default function TodoDetail() {
-  const { id } = useParams<RouteParams>();
+  const params = useParams();
+  const id = params?.id as string;
 
   const { data: todo, isLoading, isError } = useQuery<Todo>({
     queryKey: ["todo", id],
     queryFn: () => fetchTodo(id),
+    enabled: !!id,
   });
 
-  if (isLoading) return <p>Loading todo...</p>;
-  if (isError) return <p>Todo not found.</p>;
+  if (isLoading) return <p style={{ textAlign: 'center', padding: '2rem' }}>Loading todo...</p>;
+  if (isError || !todo) return <p style={{ textAlign: 'center', padding: '2rem', color: 'red' }}>Todo not found.</p>;
 
   return (
     <div
@@ -43,16 +41,19 @@ export default function TodoDetail() {
         boxShadow: "0 0 10px rgba(0,0,0,0.1)",
       }}
     >
-      <h2>Todo Detail</h2>
-      <p>
-        <strong>ID:</strong> {todo?.id}
+      <h2 style={{ marginBottom: "1.5rem", fontSize: "2rem" }}>Todo Detail</h2>
+      <p style={{ marginBottom: "1rem" }}>
+        <strong>ID:</strong> {todo.id}
       </p>
-      <p>
-        <strong>Title:</strong> {todo?.title}
+      <p style={{ marginBottom: "1rem" }}>
+        <strong>Title:</strong> {todo.title}
       </p>
-      <p>
+      <p style={{ marginBottom: "1rem" }}>
         <strong>Status:</strong>{" "}
-        {todo?.completed ? "✅ Completed" : "❌ Not Completed"}
+        {todo.completed ? "✅ Completed" : "❌ Not Completed"}
+      </p>
+      <p style={{ marginBottom: "1rem" }}>
+        <strong>User ID:</strong> {todo.userId}
       </p>
 
       <Link
@@ -60,7 +61,12 @@ export default function TodoDetail() {
         style={{
           display: "inline-block",
           marginTop: "1rem",
-          color: "#007bff",
+          padding: "0.75rem 1.5rem",
+          backgroundColor: "#A888B5",
+          color: "#fff",
+          borderRadius: "8px",
+          textDecoration: "none",
+          fontWeight: "bold",
         }}
       >
         ← Back to Home
