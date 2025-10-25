@@ -21,7 +21,7 @@ const fetchTodo = async (id: string): Promise<Todo> => {
   return res.json();
 };
 
-export default function TodoDetail(): JSX.Element {
+export default function TodoDetail() {
   const { id } = useParams<RouteParams>();
 
   const { data: todo, isLoading, isError } = useQuery<Todo>({
