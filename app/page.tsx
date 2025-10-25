@@ -2,7 +2,7 @@
 
 import TodoList from "../components/TodoList";
 
-export default function Page(): JSX.Element {
+export default function Page() {
   return (
     <div
       style={{

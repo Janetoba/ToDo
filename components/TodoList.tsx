@@ -26,7 +26,7 @@ interface Todo {
 
 type StatusFilter = "all" | "completed" | "not-completed";
 
-export default function TodoList(): JSX.Element {
+export default function TodoList() {
   const [showModal, setShowModal] = useState<boolean>(false);
   const [modalInput, setModalInput] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
